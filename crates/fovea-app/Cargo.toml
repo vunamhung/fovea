@@ -1,0 +1,24 @@
+[package]
+name = "fovea-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "fovea"
+path = "src/main.rs"
+
+[dependencies]
+fovea-core.workspace = true
+fovea-capture.workspace = true
+gpui-kit.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
