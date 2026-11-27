@@ -1,0 +1,15 @@
+/target
+**/*.rs.bk
+*.pdb
+.DS_Store
+*.fovea/
+*.mov
+*.mp4
+*.caf
+*.wav
+*.mp3
+*.gif
+.env
+.env.*
+dist/
+build/
