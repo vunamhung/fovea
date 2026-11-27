@@ -12,8 +12,11 @@ path = "src/main.rs"
 [dependencies]
 fovea-core.workspace = true
 fovea-capture.workspace = true
+fovea-render.workspace = true
 gpui-kit.workspace = true
 clap.workspace = true
+image.workspace = true
+smallvec.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true

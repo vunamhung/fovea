@@ -1,77 +1,86 @@
-use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::{Disableable, IconName};
-use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::component::IconName;
 use gpui_kit::*;
 
-use fovea_core::AspectRatio;
-
-use crate::state::SessionMode;
+use crate::ui::hud_launcher::open_hud_launcher_window;
 use crate::ui::studio::StudioView;
 
 pub fn render_topbar(view: &StudioView, cx: &mut Context<StudioView>) -> impl IntoElement {
     let state = &view.state;
-    let is_recording = state.mode == SessionMode::Recording;
-    let perms_ok = state.permissions.all_required_granted();
-    let ratio = state.project().frame.aspect_ratio;
     let title = state.project().title.clone();
     let can_undo = state.can_undo();
     let can_redo = state.can_redo();
 
     div()
-        .h(px(52.0))
+        .h(px(48.0))
         .w_full()
-        .px_4()
+        .pl(px(82.0))
+        .pr_4()
+        .bg(rgb(0xffffff))
+        .border_b_1()
+        .border_color(rgb(0xebedf2))
         .flex()
         .items_center()
         .justify_between()
-        .bg(rgb(0x12141a))
-        .border_b_1()
-        .border_color(rgb(0x232734))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_3()
-                .child(
-                    div()
-                        .px_2p5()
-                        .py_1()
-                        .rounded_md()
-                        .bg(rgb(0x1f2433))
-                        .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(rgb(0xf3f4f6))
-                        .child("FOVEA"),
-                )
-                .child(
-                    Button::new("record-toggle")
-                        .map(|b| if is_recording { b.danger() } else { b.primary() })
-                        .icon(if is_recording {
-                            IconName::Square
-                        } else {
-                            IconName::Play
-                        })
-                        .label(if is_recording { "Stop" } else { "Record" })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.toggle_recording(cx);
-                        })),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(rgb(0xcbd5e1))
-                        .child(title),
-                ),
-        )
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap_1p5()
-                .child(aspect_btn("ratio-16-9", "16:9", AspectRatio::Ratio16x9, ratio, cx))
-                .child(aspect_btn("ratio-9-16", "9:16", AspectRatio::Ratio9x16, ratio, cx))
-                .child(aspect_btn("ratio-4-3", "4:3", AspectRatio::Ratio4x3, ratio, cx))
-                .child(aspect_btn("ratio-1-1", "1:1", AspectRatio::Ratio1x1, ratio, cx)),
+                .child(top_icon_btn(
+                    "top-new-rec",
+                    IconName::Play,
+                    true,
+                    cx.listener(|_, _, _, cx| open_hud_launcher_window(cx)),
+                ))
+                .child(
+                    div()
+                        .w(px(1.0))
+                        .h(px(18.0))
+                        .mx_1()
+                        .bg(rgb(0xe5e7eb)),
+                )
+                .child(top_icon_btn(
+                    "top-undo",
+                    IconName::Undo2,
+                    can_undo,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.undo();
+                        cx.notify();
+                    }),
+                ))
+                .child(top_icon_btn(
+                    "top-redo",
+                    IconName::Redo2,
+                    can_redo,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.redo();
+                        cx.notify();
+                    }),
+                )),
+        )
+        .child(
+            div()
+                .flex_1()
+                .h_full()
+                .window_control_area(WindowControlArea::Drag)
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .child(div().w(px(7.0)).h(px(7.0)).rounded_full().bg(rgb(0x2563eb)))
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(0x111827))
+                        .child(title),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(0x9ca3af))
+                        .child(".fovea"),
+                ),
         )
         .child(
             div()
@@ -79,65 +88,72 @@ pub fn render_topbar(view: &StudioView, cx: &mut Context<StudioView>) -> impl In
                 .items_center()
                 .gap_2()
                 .child(
-                    Button::new("perms-btn")
-                        .outline()
-                        .icon(if perms_ok {
-                            IconName::CircleCheck
-                        } else {
-                            IconName::TriangleAlert
-                        })
-                        .label(if perms_ok { "Permissions" } else { "Setup Access" })
+                    div()
+                        .id("top-presets")
+                        .h(px(30.0))
+                        .px_3()
+                        .rounded(px(8.0))
+                        .bg(rgb(0xffffff))
+                        .border_1()
+                        .border_color(rgb(0xe5e7eb))
+                        .flex()
+                        .items_center()
+                        .gap_1p5()
+                        .cursor_pointer()
+                        .text_xs()
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(rgb(0x374151))
+                        .child(IconName::Star)
+                        .child("Presets")
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.state.show_permissions = !this.state.show_permissions;
-                            cx.notify();
+                            this.apply_next_preset(cx);
                         })),
                 )
                 .child(
-                    Button::new("undo-btn")
-                        .outline()
-                        .icon(IconName::Undo2)
-                        .disabled(!can_undo)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.state.undo();
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("redo-btn")
-                        .outline()
-                        .icon(IconName::Redo2)
-                        .disabled(!can_redo)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.state.redo();
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("export-btn")
-                        .primary()
-                        .icon(IconName::ExternalLink)
-                        .label("Export")
+                    div()
+                        .id("top-export")
+                        .h(px(32.0))
+                        .px_4()
+                        .rounded(px(9.0))
+                        .bg(rgb(0x2563eb))
+                        .flex()
+                        .items_center()
+                        .gap_1p5()
+                        .cursor_pointer()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(0xffffff))
+                        .child(IconName::ExternalLink)
+                        .child("Export")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.state.last_status =
-                                "Hardware VideoToolbox export arrives in Milestone 2".into();
+                                "VideoToolbox MP4 & pure-Rust GIF export ready in Milestone 2"
+                                    .into();
                             cx.notify();
                         })),
                 ),
         )
 }
 
-fn aspect_btn(
+fn top_icon_btn(
     id: &'static str,
-    label: &'static str,
-    target: AspectRatio,
-    current: AspectRatio,
-    cx: &mut Context<StudioView>,
+    icon: IconName,
+    enabled: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    Button::new(id)
-        .map(|b| if target == current { b.primary() } else { b.outline() })
-        .label(label)
-        .on_click(cx.listener(move |this, _, _, cx| {
-            let _ = this.state.set_aspect_ratio(target);
-            cx.notify();
-        }))
+    div()
+        .id(id)
+        .w(px(28.0))
+        .h(px(28.0))
+        .rounded(px(7.0))
+        .bg(if enabled { rgb(0xf8fafc) } else { rgb(0xffffff) })
+        .border_1()
+        .border_color(rgb(0xe5e7eb))
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .text_color(if enabled { rgb(0x334155) } else { rgb(0xcbd5e1) })
+        .child(icon)
+        .on_click(on_click)
 }

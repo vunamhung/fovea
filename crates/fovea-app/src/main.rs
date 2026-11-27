@@ -1,10 +1,9 @@
 use clap::Parser;
 use gpui_kit::component::{Theme, ThemeMode};
-use gpui_kit::*;
 use tracing_subscriber::EnvFilter;
 
 use fovea_app::cli::{CliArgs, CliCommand};
-use fovea_app::ui::StudioView;
+use fovea_app::ui::{open_hud_launcher_window, open_studio_editor_window};
 
 fn main() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -19,26 +18,18 @@ fn main() {
         Some(CliCommand::Open { path }) => Some(path),
         None => None,
     };
+    let start_editor = args.editor || open_path.is_some();
 
     gpui_kit::application()
         .with_assets(gpui_kit::assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
-            Theme::change(ThemeMode::Dark, None, cx);
+            Theme::change(ThemeMode::Light, None, cx);
 
-            let bounds = Bounds::centered(None, size(px(1280.0), px(820.0)), cx);
-            let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(TitlebarOptions {
-                    title: Some("Fovea Studio".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            };
-
-            gpui_kit::open_window(options, cx, move |_, cx| {
-                cx.new(|_| StudioView::new(open_path.clone()))
-            })
-            .expect("failed to open Fovea Studio window");
+            if start_editor {
+                open_studio_editor_window(open_path.clone(), cx);
+            } else {
+                open_hud_launcher_window(cx);
+            }
         });
 }

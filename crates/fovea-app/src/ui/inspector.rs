@@ -1,189 +1,136 @@
-use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::IconName;
-use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
+
+use fovea_core::{EditCommand, FrameStyle};
 
 use crate::state::RightPanelTab;
 use crate::ui::ai_chat::render_ai_chat_panel;
+use crate::ui::inspector_bg::{render_background_section, section_action_row};
+use crate::ui::inspector_system::{light_toggle, render_permissions_tab, render_voice_tab};
+use crate::ui::inspector_tabs::{render_cursor_tab, render_webcam_tab};
+use crate::ui::pill_slider::pill_slider;
 use crate::ui::studio::StudioView;
 
-pub fn render_inspector(view: &StudioView, cx: &mut Context<StudioView>) -> impl IntoElement {
+pub fn render_floating_inspector(
+    view: &StudioView,
+    cx: &mut Context<StudioView>,
+) -> impl IntoElement {
     let tab = view.state.active_tab;
 
     div()
-        .w(px(330.0))
+        .w(px(274.0))
         .h_full()
-        .bg(rgb(0x12141a))
-        .border_l_1()
-        .border_color(rgb(0x232734))
+        .p_3()
+        .bg(rgb(0xf8fafc))
         .flex()
-        .flex_col()
         .child(
             div()
-                .p_3()
-                .border_b_1()
-                .border_color(rgb(0x232734))
+                .size_full()
+                .p_3p5()
+                .rounded(px(16.0))
+                .bg(rgb(0xffffff))
+                .border_1()
+                .border_color(rgb(0xe5e7eb))
+                .shadow_md()
                 .flex()
-                .gap_2()
-                .child(
-                    Button::new("tab-inspector")
-                        .flex_1()
-                        .map(|b| {
-                            if tab == RightPanelTab::Inspector {
-                                b.primary()
-                            } else {
-                                b.outline()
-                            }
-                        })
-                        .icon(IconName::Inspector)
-                        .label("Inspector")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.state.set_tab(RightPanelTab::Inspector);
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("tab-ai-chat")
-                        .flex_1()
-                        .map(|b| {
-                            if tab == RightPanelTab::AiChat {
-                                b.primary()
-                            } else {
-                                b.outline()
-                            }
-                        })
-                        .icon(IconName::Bot)
-                        .label("AI Chat")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.state.set_tab(RightPanelTab::AiChat);
-                            cx.notify();
-                        })),
-                ),
+                .flex_col()
+                .gap_2p5()
+                .overflow_hidden()
+                .child(match tab {
+                    RightPanelTab::Inspector => render_frame_inspector(view, cx).into_any_element(),
+                    RightPanelTab::Cursor => render_cursor_tab(view, cx).into_any_element(),
+                    RightPanelTab::Webcam => render_webcam_tab(view, cx).into_any_element(),
+                    RightPanelTab::VoiceCaptions => render_voice_tab(view, cx).into_any_element(),
+                    RightPanelTab::AiChat => render_ai_chat_panel(view, cx).into_any_element(),
+                    RightPanelTab::Permissions => {
+                        render_permissions_tab(view, cx).into_any_element()
+                    }
+                }),
         )
-        .child(match tab {
-            RightPanelTab::Inspector => render_inspector_body(view, cx).into_any_element(),
-            RightPanelTab::AiChat => render_ai_chat_panel(view, cx).into_any_element(),
-        })
 }
 
-fn render_inspector_body(view: &StudioView, cx: &mut Context<StudioView>) -> impl IntoElement {
-    let state = &view.state;
-    let sources: Vec<(usize, String, bool)> = state
-        .sources
-        .iter()
-        .take(6)
-        .enumerate()
-        .map(|(i, s)| {
-            (
-                i,
-                format!("{} ({}×{})", s.name, s.width, s.height),
-                i == state.selected_source_idx,
-            )
-        })
-        .collect();
+fn render_frame_inspector(
+    view: &StudioView,
+    cx: &mut Context<StudioView>,
+) -> impl IntoElement {
+    let frame = view.state.project().frame.clone();
+    let shadow_pct = (frame.shadow_intensity * 100.0).round() as u32;
+    let radius_pct = ((frame.corner_radius_px / 36.0).clamp(0.0, 1.0) * 100.0).round() as u32;
+    let pad_pct = ((frame.padding_ratio / 0.30).clamp(0.0, 1.0) * 100.0).round() as u32;
+    let remove_bg = view.state.remove_background;
 
     div()
         .flex_1()
-        .p_4()
         .flex()
         .flex_col()
-        .gap_4()
-        .child(section_header("Capture Source"))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1p5()
-                .children(sources.into_iter().map(|(idx, label, selected)| {
-                    Button::new(("src-item", idx))
-                        .w_full()
-                        .map(|b| if selected { b.primary() } else { b.outline() })
-                        .label(label)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.state.select_source(idx);
-                            cx.notify();
-                        }))
-                }))
-                .child(
-                    Button::new("refresh-sources")
-                        .outline()
-                        .icon(IconName::RefreshCw)
-                        .label("Refresh Sources")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.refresh_sources(cx);
-                        })),
-                ),
-        )
-        .child(section_header("Capture Options"))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(toggle_row(
-                    "toggle-sys-audio",
-                    "System Audio (48kHz)",
-                    state.capture_system_audio,
-                    cx.listener(|this, _, _, cx| {
-                        this.state.capture_system_audio = !this.state.capture_system_audio;
-                        cx.notify();
-                    }),
-                ))
-                .child(toggle_row(
-                    "toggle-hide-cursor",
-                    "Hide Native OS Cursor",
-                    state.hide_os_cursor,
-                    cx.listener(|this, _, _, cx| {
-                        this.state.hide_os_cursor = !this.state.hide_os_cursor;
-                        cx.notify();
-                    }),
-                ))
-                .child(toggle_row(
-                    "toggle-keystrokes",
-                    "Keystroke HUD (Secure-Input Safe)",
-                    state.capture_keystrokes,
-                    cx.listener(|this, _, _, cx| {
-                        this.state.capture_keystrokes = !this.state.capture_keystrokes;
-                        cx.notify();
-                    }),
-                )),
-        )
-        .child(section_header("Voiceover & Captions"))
-        .child(
-            div()
-                .p_3()
-                .rounded_md()
-                .bg(rgb(0x181c26))
-                .border_1()
-                .border_color(rgb(0x262c3d))
-                .text_xs()
-                .text_color(rgb(0x94a3b8))
-                .child("Vbee Neural TTS + On-demand Whisper CoreML STT ready for Milestone 3."),
-        )
-}
-
-fn section_header(text: &'static str) -> impl IntoElement {
-    div()
-        .text_xs()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(rgb(0x94a3b8))
-        .child(text)
-}
-
-fn toggle_row(
-    id: &'static str,
-    label: &'static str,
-    enabled: bool,
-    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    Button::new(id)
-        .w_full()
-        .map(|b| if enabled { b.primary() } else { b.outline() })
-        .icon(if enabled {
-            IconName::CircleCheck
-        } else {
-            IconName::CircleX
-        })
-        .label(label)
-        .on_click(on_click)
+        .gap_2p5()
+        .child(render_background_section(view, cx))
+        .child(section_action_row(
+            "FRAME",
+            "Reset",
+            "reset-frame",
+            cx.listener(|this, _, _, cx| {
+                let f = FrameStyle {
+                    background: this.state.project().frame.background.clone(),
+                    ..FrameStyle::default()
+                };
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(pill_slider(
+            "slider-shadow",
+            "Shadow",
+            format!("{shadow_pct}%"),
+            frame.shadow_intensity,
+            cx.listener(|this, v: &f32, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                f.shadow_intensity = *v;
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(pill_slider(
+            "slider-radius",
+            "Radius",
+            format!("{radius_pct}%"),
+            (frame.corner_radius_px / 36.0).clamp(0.0, 1.0),
+            cx.listener(|this, v: &f32, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                f.corner_radius_px = (*v * 36.0).round();
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(section_action_row(
+            "PADDING",
+            "Reset",
+            "reset-pad",
+            cx.listener(|this, _, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                f.padding_ratio = 0.14;
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(pill_slider(
+            "slider-padding",
+            "Padding",
+            format!("{pad_pct}%"),
+            (frame.padding_ratio / 0.30).clamp(0.0, 1.0),
+            cx.listener(|this, v: &f32, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                f.padding_ratio = *v * 0.30;
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(light_toggle(
+            "toggle-remove-bg",
+            "Remove background",
+            remove_bg,
+            cx.listener(|this, _, _, cx| {
+                this.state.remove_background = !this.state.remove_background;
+                cx.notify();
+            }),
+        ))
 }

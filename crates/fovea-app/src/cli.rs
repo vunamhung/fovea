@@ -9,6 +9,10 @@ use clap::{Parser, Subcommand};
     about = "Pure-Rust, GPU-native screen recorder and AI demo video studio"
 )]
 pub struct CliArgs {
+    /// Launch directly into the Studio Editor window instead of the floating recording HUD.
+    #[arg(long)]
+    pub editor: bool,
+
     #[command(subcommand)]
     pub command: Option<CliCommand>,
 }

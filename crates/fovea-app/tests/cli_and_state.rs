@@ -5,9 +5,13 @@ use fovea_capture::{CaptureSource, PermissionReport};
 use fovea_core::{AspectRatio, EditCommand};
 
 #[test]
-fn cli_parses_default_open_and_mcp_subcommands() {
+fn cli_parses_default_editor_open_and_mcp_subcommands() {
     let default_cli = CliArgs::try_parse_from(["fovea"]).expect("default");
     assert!(default_cli.command.is_none());
+    assert!(!default_cli.editor);
+
+    let editor_cli = CliArgs::try_parse_from(["fovea", "--editor"]).expect("editor");
+    assert!(editor_cli.editor);
 
     let open_cli = CliArgs::try_parse_from(["fovea", "open", "/tmp/demo.fovea"]).expect("open");
     assert!(matches!(
@@ -20,18 +24,27 @@ fn cli_parses_default_open_and_mcp_subcommands() {
 }
 
 #[test]
-fn studio_state_handles_recording_lifecycle_tabs_and_undo_redo() {
+fn studio_state_handles_recording_lifecycle_cycles_tabs_and_undo_redo() {
     let mut state = StudioState::new(
         PermissionReport::all_granted_for_test(),
-        vec![CaptureSource::display(1, "Built-in Display", 1920, 1080)],
+        vec![
+            CaptureSource::display(1, "Built-in Display", 1920, 1080),
+            CaptureSource::display(2, "External 4K", 3840, 2160),
+        ],
     );
     assert_eq!(state.mode, SessionMode::Idle);
     assert_eq!(state.active_tab, RightPanelTab::Inspector);
+    assert_eq!(state.selected_source().unwrap().id, 1);
+
+    state.cycle_source();
+    assert_eq!(state.selected_source().unwrap().id, 2);
+    state.cycle_source();
+    assert_eq!(state.selected_source().unwrap().id, 1);
 
     state.set_tab(RightPanelTab::AiChat);
     assert_eq!(state.active_tab, RightPanelTab::AiChat);
 
-    state.set_aspect_ratio(AspectRatio::Ratio9x16).expect("ratio");
+    state.cycle_aspect_ratio().expect("cycle ratio");
     assert_eq!(state.project().frame.aspect_ratio, AspectRatio::Ratio9x16);
     assert!(state.undo());
     assert_eq!(state.project().frame.aspect_ratio, AspectRatio::Ratio16x9);
