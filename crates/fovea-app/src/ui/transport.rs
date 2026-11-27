@@ -1,15 +1,24 @@
 use gpui_kit::component::IconName;
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
 use crate::ui::studio::StudioView;
 
-pub fn render_transport_bar(
-    playhead_ms: u64,
-    total_ms: u64,
-    is_playing: bool,
-    volume_pct: u8,
-    cx: &mut Context<StudioView>,
-) -> impl IntoElement {
+pub fn render_transport_bar(view: &StudioView, cx: &mut Context<StudioView>) -> impl IntoElement {
+    let playhead_ms = view.state.playhead_ms;
+    let total_ms = view.state.output_duration_ms().max(1_000);
+    let is_playing = view.state.is_playing;
+    let volume_pct = view.state.volume_pct;
+    let can_del_clip = view.state.project().clips.len() > 1;
+    let selected_zoom_scale = view.state.selected_zoom_id.and_then(|id| {
+        view.state
+            .project()
+            .zoom_regions
+            .iter()
+            .find(|z| z.id == id)
+            .map(|z| z.scale)
+    });
+
     div()
         .h(px(44.0))
         .w_full()
@@ -23,46 +32,50 @@ pub fn render_transport_bar(
             div()
                 .flex()
                 .items_center()
-                .gap_2()
+                .gap_1p5()
                 .child(transport_btn(
-                    "tl-add-layer",
+                    "tl-add-zoom",
                     IconName::Plus,
-                    Some("Add Layer"),
+                    Some("Zoom"),
                     cx.listener(|this, _, _, cx| this.add_demo_zoom(cx)),
                 ))
                 .child(transport_btn(
-                    "tl-zoom-add",
-                    IconName::Search,
-                    None,
-                    cx.listener(|this, _, _, cx| this.add_demo_zoom(cx)),
+                    "tl-split",
+                    IconName::Minus,
+                    Some("Split"),
+                    cx.listener(|this, _, _, cx| this.split_clip_at_playhead(cx)),
                 ))
+                .when(can_del_clip, |d| {
+                    d.child(transport_btn(
+                        "tl-del-clip",
+                        IconName::Close,
+                        Some("Delete Clip"),
+                        cx.listener(|this, _, _, cx| this.delete_selected_clip(cx)),
+                    ))
+                })
                 .child(transport_btn(
                     "tl-add-blur",
                     IconName::EyeOff,
-                    None,
+                    Some("Blur"),
                     cx.listener(|this, _, _, cx| this.add_demo_privacy_blur(cx)),
-                )),
+                ))
+                .when_some(selected_zoom_scale, |d, current_scale| {
+                    d.child(render_zoom_tuner(current_scale, cx))
+                }),
         )
         .child(
             div()
                 .flex()
                 .items_center()
                 .gap_3()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(rgb(0x64748b))
-                        .child(fmt_time(playhead_ms)),
-                )
+                .child(div().text_xs().text_color(rgb(0x64748b)).child(fmt_time(playhead_ms)))
                 .child(
                     div()
                         .id("tl-rewind")
                         .cursor_pointer()
                         .text_color(rgb(0x475569))
                         .child(IconName::ChevronLeft)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.seek_to_ms(0, cx);
-                        })),
+                        .on_click(cx.listener(|this, _, _, cx| this.seek_to_ms(0, cx))),
                 )
                 .child(
                     div()
@@ -76,21 +89,10 @@ pub fn render_transport_bar(
                         .items_center()
                         .justify_center()
                         .cursor_pointer()
-                        .child(if is_playing {
-                            IconName::Pause
-                        } else {
-                            IconName::Play
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.toggle_playback(cx);
-                        })),
+                        .child(if is_playing { IconName::Pause } else { IconName::Play })
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_playback(cx))),
                 )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(rgb(0x64748b))
-                        .child(fmt_time(total_ms)),
-                ),
+                .child(div().text_xs().text_color(rgb(0x64748b)).child(fmt_time(total_ms))),
         )
         .child(
             div()
@@ -121,6 +123,49 @@ pub fn render_transport_bar(
                     cx.notify();
                 })),
         )
+}
+
+fn render_zoom_tuner(current_scale: f32, cx: &mut Context<StudioView>) -> impl IntoElement {
+    let mut row = div()
+        .ml_2()
+        .px_1p5()
+        .h(px(28.0))
+        .rounded(px(8.0))
+        .bg(rgb(0xfaf5ff))
+        .border_1()
+        .border_color(rgb(0xd8b4fe))
+        .flex()
+        .items_center()
+        .gap_1();
+    for (idx, scale) in [1.3_f32, 1.5, 1.8, 2.2].into_iter().enumerate() {
+        let active = (current_scale - scale).abs() < 0.08;
+        row = row.child(
+            div()
+                .id(("z-scale", idx))
+                .px_1p5()
+                .py_0p5()
+                .rounded(px(5.0))
+                .bg(if active { rgb(0x7c3aed) } else { rgba(0x00000000) })
+                .text_xs()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(if active { rgb(0xffffff) } else { rgb(0x6b21a8) })
+                .cursor_pointer()
+                .child(format!("{scale:.1}x"))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.set_selected_zoom_scale(scale, cx);
+                })),
+        );
+    }
+    row.child(
+        div()
+            .id("z-delete")
+            .px_1()
+            .cursor_pointer()
+            .text_xs()
+            .text_color(rgb(0xdc2626))
+            .child(IconName::Close)
+            .on_click(cx.listener(|this, _, _, cx| this.delete_selected_zoom(cx))),
+    )
 }
 
 fn transport_btn(

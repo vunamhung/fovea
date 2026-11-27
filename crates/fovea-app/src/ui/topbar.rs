@@ -1,6 +1,7 @@
 use gpui_kit::component::IconName;
 use gpui_kit::*;
 
+use crate::state::RightPanelTab;
 use crate::ui::hud_launcher::open_hud_launcher_window;
 use crate::ui::studio::StudioView;
 
@@ -129,7 +130,13 @@ pub fn render_topbar(view: &StudioView, cx: &mut Context<StudioView>) -> impl In
                         .child(IconName::ExternalLink)
                         .child("Export")
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.export_project_bundle(cx);
+                            let next = if this.state.active_tab == RightPanelTab::Export {
+                                RightPanelTab::Inspector
+                            } else {
+                                RightPanelTab::Export
+                            };
+                            this.state.set_tab(next);
+                            cx.notify();
                         })),
                 ),
         )

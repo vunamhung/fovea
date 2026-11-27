@@ -1,9 +1,10 @@
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 
-use fovea_core::{AnnotationKind, AspectRatio};
+use fovea_core::{
+    AnnotationKind, AspectRatio, active_keystroke_at_ms, camera_at_ms, sample_cursor_at_ms,
+};
 
-use crate::demo::camera_at_ms;
 use crate::ui::presets::background_to_gpui;
 use crate::ui::stage_parts::{render_sample_macos_window, render_stage_toolbar, render_webcam_bubble};
 use crate::ui::studio::StudioView;
@@ -36,10 +37,31 @@ pub fn render_stage(view: &StudioView, cx: &mut Context<StudioView>) -> impl Int
     };
     let inner_w = (canvas_w - pad_px * 2.0).max(80.0);
     let inner_h = (canvas_h - pad_px * 2.0).max(60.0);
-    let zoomed_w = inner_w * zoom_scale;
-    let zoomed_h = inner_h * zoom_scale;
-    let offset_x = (inner_w * 0.5 - zoomed_w * focus_x).clamp(inner_w - zoomed_w, 0.0);
-    let offset_y = (inner_h * 0.5 - zoomed_h * focus_y).clamp(inner_h - zoomed_h, 0.0);
+
+    // Apply both frame crop and smooth camera zoom/pan cleanly inside the rounded frame.
+    let crop_scale_x = 1.0 / frame.crop.width.clamp(0.25, 1.0);
+    let crop_scale_y = 1.0 / frame.crop.height.clamp(0.25, 1.0);
+    let zoomed_w = inner_w * zoom_scale * crop_scale_x;
+    let zoomed_h = inner_h * zoom_scale * crop_scale_y;
+    let eff_fx = (frame.crop.x + focus_x * frame.crop.width).clamp(0.0, 1.0);
+    let eff_fy = (frame.crop.y + focus_y * frame.crop.height).clamp(0.0, 1.0);
+    let offset_x = (inner_w * 0.5 - zoomed_w * eff_fx).clamp(inner_w - zoomed_w, 0.0);
+    let offset_y = (inner_h * 0.5 - zoomed_h * eff_fy).clamp(inner_h - zoomed_h, 0.0);
+
+    let (cur_x, cur_y, cur_clicked) = sample_cursor_at_ms(&view.state.telemetry, playhead_ms)
+        .unwrap_or((eff_fx, eff_fy, zoom_scale > 1.15));
+    let keystroke = project
+        .keystroke_hud
+        .enabled
+        .then(|| {
+            active_keystroke_at_ms(
+                &view.state.telemetry,
+                playhead_ms,
+                project.keystroke_hud.duration_ms,
+            )
+            .map(ToString::to_string)
+        })
+        .flatten();
 
     let shadow_alpha = (frame.shadow_intensity.clamp(0.0, 1.0) * 0.42).max(0.02);
     let shadow_blur = px(12.0 + frame.shadow_intensity * 36.0);
@@ -88,13 +110,7 @@ pub fn render_stage(view: &StudioView, cx: &mut Context<StudioView>) -> impl Int
                 .overflow_hidden()
                 .when_some(view.custom_bg_image.clone(), |d, bg_img| {
                     d.when(!view.state.remove_background, |d| {
-                        d.child(
-                            img(bg_img)
-                                .absolute()
-                                .inset_0()
-                                .size_full()
-                                .object_fit(ObjectFit::Cover),
-                        )
+                        d.child(img(bg_img).absolute().inset_0().size_full().object_fit(ObjectFit::Cover))
                     })
                 })
                 .when(blur_alpha > 0.01 && !view.state.remove_background, |d| {
@@ -143,14 +159,14 @@ pub fn render_stage(view: &StudioView, cx: &mut Context<StudioView>) -> impl Int
                                             d.child(
                                                 div()
                                                     .absolute()
-                                                    .left(px(zoomed_w * focus_x - sz * 0.5))
-                                                    .top(px(zoomed_h * focus_y - sz * 0.5))
+                                                    .left(px(zoomed_w * cur_x - sz * 0.5))
+                                                    .top(px(zoomed_h * cur_y - sz * 0.5))
                                                     .w(px(sz))
                                                     .h(px(sz))
                                                     .rounded_full()
                                                     .bg(rgb(0x111827))
                                                     .border_2()
-                                                    .border_color(if zoom_scale > 1.15 {
+                                                    .border_color(if cur_clicked {
                                                         rgb(0x60a5fa)
                                                     } else {
                                                         rgb(0xffffff)
@@ -188,6 +204,24 @@ pub fn render_stage(view: &StudioView, cx: &mut Context<StudioView>) -> impl Int
                                 }),
                         ),
                 )
+                .when_some(keystroke, |d, keys| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .bottom_4()
+                            .left(relative(0.5))
+                            .px_3()
+                            .py_1()
+                            .rounded(px(8.0))
+                            .bg(rgba(0x0f172ae0))
+                            .border_1()
+                            .border_color(rgba(0xffffff2a))
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(0xffffff))
+                            .child(keys),
+                    )
+                })
                 .when(webcam.enabled, |d| {
                     let react = if webcam.zoom_reactive && zoom_scale > 1.05 { 0.72 } else { 1.0 };
                     let cam_sz = (canvas_h * webcam.size_ratio * react).clamp(44.0, 150.0);

@@ -1776,6 +1776,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-core-media",
+ "objc2-core-video",
  "objc2-foundation 0.3.2",
  "objc2-screen-capture-kit",
  "serde",
@@ -1804,12 +1805,17 @@ version = "0.1.0"
 name = "fovea-render"
 version = "0.1.0"
 dependencies = [
+ "block2 0.6.2",
+ "fovea-core",
+ "image",
  "objc2 0.6.5",
  "objc2-av-foundation",
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-core-media",
+ "objc2-core-video",
  "objc2-foundation 0.3.2",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 
@@ -4416,6 +4422,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d425caf1df73233f29fd8a5c3e5edbc30d2d4307870f802d18f00d83dc5141a6"
 dependencies = [
  "bitflags 2.13.2",
+ "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-graphics",

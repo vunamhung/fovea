@@ -6,13 +6,19 @@ use crate::state::SessionMode;
 use crate::ui::hud_launcher::HudLauncherView;
 use crate::ui::studio::open_studio_editor_window;
 
-/// Renders the compact frameless floating HUD pill anchored bottom-center of the screen.
 pub fn render_hud_pill(view: &HudLauncherView, cx: &mut Context<HudLauncherView>) -> impl IntoElement {
     let recording = view.state.mode == SessionMode::Recording;
-    let source_name = view
+    let source_label = view
         .state
         .selected_source()
-        .map(|s| s.name.clone())
+        .map(|s| {
+            let short: String = s.name.chars().take(18).collect();
+            if view.state.sources.len() > 1 {
+                format!("{short} ({}/{})", view.state.selected_source_idx + 1, view.state.sources.len())
+            } else {
+                short
+            }
+        })
         .unwrap_or_else(|| "Display 1".into());
     let timer = format!("{:02}:{:02}", view.elapsed_sec / 60, view.elapsed_sec % 60);
     let show_notice = !recording && view.state.last_status != "Ready";
@@ -57,7 +63,7 @@ pub fn render_hud_pill(view: &HudLauncherView, cx: &mut Context<HudLauncherView>
                 .child(if recording {
                     render_recording_controls(&timer, cx).into_any_element()
                 } else {
-                    render_idle_controls(view, &source_name, cx).into_any_element()
+                    render_idle_controls(view, &source_label, cx).into_any_element()
                 })
                 .child(render_right_actions(cx)),
         )
@@ -83,45 +89,38 @@ fn render_drag_grip() -> impl IntoElement {
 
 fn render_recording_controls(timer: &str, cx: &mut Context<HudLauncherView>) -> impl IntoElement {
     div()
-        .flex()
-        .items_center()
-        .gap_3()
+        .flex().items_center().gap_2p5()
         .child(div().w(px(10.0)).h(px(10.0)).rounded_full().bg(rgb(0xef4444)))
-        .child(
-            div()
-                .text_sm()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(rgb(0xffffff))
-                .child(timer.to_string()),
-        )
-        .child(hud_pill_btn(
-            "hud-stop",
-            "Stop & Edit",
-            rgb(0xef4444),
-            rgb(0xffffff),
-            cx.listener(|this, _, win, cx| this.stop_and_open_editor(win, cx)),
-        ))
+        .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xffffff)).child(timer.to_string()))
+        .child(hud_pill_btn("hud-stop", "Stop & Edit", rgb(0xef4444), rgb(0xffffff), cx.listener(|this, _, win, cx| this.stop_and_open_editor(win, cx))))
+        .child(hud_pill_btn("hud-cancel", "Cancel", rgb(0x232734), rgb(0xcbd5e1), cx.listener(|this, _, _, cx| this.cancel_recording(cx))))
 }
 
 fn render_idle_controls(
     view: &HudLauncherView,
-    source_name: &str,
+    source_label: &str,
     cx: &mut Context<HudLauncherView>,
 ) -> impl IntoElement {
     let needs_perm = !view.state.permissions.all_required_granted();
     div()
         .flex()
         .items_center()
-        .gap_2()
+        .gap_1p5()
         .child(hud_pill_btn(
             "hud-source",
-            source_name,
+            source_label,
             rgb(0x232734),
             rgb(0xe2e8f0),
             cx.listener(|this, _, _, cx| {
                 this.state.cycle_source();
                 cx.notify();
             }),
+        ))
+        .child(hud_icon_toggle(
+            "hud-refresh",
+            IconName::RefreshCw,
+            false,
+            cx.listener(|this, _, _, cx| this.refresh_sources(cx)),
         ))
         .when(needs_perm, |d| {
             d.child(hud_pill_btn(
@@ -141,12 +140,13 @@ fn render_idle_controls(
                 cx.notify();
             }),
         ))
-        .child(hud_icon_toggle(
-            "hud-cursor",
-            if view.state.hide_os_cursor { IconName::EyeOff } else { IconName::Eye },
-            view.state.hide_os_cursor,
+        .child(hud_pill_btn(
+            "hud-timer",
+            if view.state.countdown_enabled { "3s" } else { "0s" },
+            if view.state.countdown_enabled { rgb(0x334155) } else { rgb(0x232734) },
+            rgb(0xe2e8f0),
             cx.listener(|this, _, _, cx| {
-                this.state.hide_os_cursor = !this.state.hide_os_cursor;
+                this.state.countdown_enabled = !this.state.countdown_enabled;
                 cx.notify();
             }),
         ))
@@ -200,9 +200,9 @@ fn hud_pill_btn(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .px_3()
+        .px_2p5()
         .h(px(34.0))
-        .rounded(px(11.0))
+        .rounded(px(10.0))
         .bg(bg_color)
         .flex()
         .items_center()
@@ -223,7 +223,7 @@ fn hud_icon_toggle(
 ) -> impl IntoElement {
     div()
         .id(id)
-        .w(px(34.0))
+        .w(px(32.0))
         .h(px(34.0))
         .rounded(px(10.0))
         .bg(if active { rgb(0x2563eb) } else { rgb(0x232734) })

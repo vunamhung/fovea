@@ -6,21 +6,46 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+fovea-core.workspace = true
+image = { workspace = true, features = ["gif"] }
 thiserror.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 objc2 = "0.6"
 objc2-av-foundation = { version = "0.3.2", features = [
     "AVAsset",
     "AVAssetImageGenerator",
+    "AVAssetWriter",
+    "AVAssetWriterInput",
+    "AVMediaFormat",
+    "AVVideoSettings",
+    "block2",
     "objc2-core-foundation",
     "objc2-core-graphics",
     "objc2-core-media",
+    "objc2-core-video",
 ] }
 objc2-core-foundation = "0.3.2"
 objc2-core-graphics = "0.3.2"
 objc2-core-media = { version = "0.3.2", features = ["CMTime"] }
-objc2-foundation = { version = "0.3.2", features = ["NSError", "NSString", "NSURL"] }
+objc2-core-video = { version = "0.3.2", features = [
+    "CVBase",
+    "CVBuffer",
+    "CVImageBuffer",
+    "CVPixelBuffer",
+    "CVReturn",
+] }
+objc2-foundation = { version = "0.3.2", features = [
+    "NSDictionary",
+    "NSError",
+    "NSString",
+    "NSURL",
+    "NSValue",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

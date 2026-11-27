@@ -3,6 +3,8 @@ use std::ptr;
 
 use block2::RcBlock;
 use objc2::runtime::Bool;
+use objc2_foundation::NSError;
+use objc2_screen_capture_kit::SCShareableContent;
 
 use crate::permissions::{PermissionEntry, PermissionKind, PermissionReport, PermissionState};
 
@@ -83,7 +85,16 @@ pub fn check_macos_permissions() -> PermissionReport {
 /// adds Fovea to System Settings Privacy lists with an ON/OFF toggle.
 pub fn request_macos_permission(kind: PermissionKind) -> bool {
     match kind {
-        PermissionKind::ScreenRecording => objc2_core_graphics::CGRequestScreenCaptureAccess(),
+        PermissionKind::ScreenRecording => {
+            let granted = objc2_core_graphics::CGRequestScreenCaptureAccess();
+            if !granted {
+                // ScreenCaptureKit probe ensures macOS 14+ registers the app bundle in
+                // System Settings -> Screen & System Audio Recording with an ON/OFF toggle.
+                let block = RcBlock::new(|_content: *mut SCShareableContent, _err: *mut NSError| {});
+                unsafe { SCShareableContent::getShareableContentWithCompletionHandler(&block) };
+            }
+            granted
+        }
         PermissionKind::Accessibility => request_accessibility_prompt(),
         PermissionKind::InputMonitoring => unsafe {
             IOHIDRequestAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT)

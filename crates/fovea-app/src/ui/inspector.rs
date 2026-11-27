@@ -1,10 +1,11 @@
 use gpui_kit::*;
 
-use fovea_core::{EditCommand, FrameStyle};
+use fovea_core::{CropRect, EditCommand, FrameStyle};
 
 use crate::state::RightPanelTab;
 use crate::ui::ai_chat::render_ai_chat_panel;
 use crate::ui::inspector_bg::{render_background_section, section_action_row};
+use crate::ui::inspector_export::render_export_tab;
 use crate::ui::inspector_system::{light_toggle, render_permissions_tab, render_voice_tab};
 use crate::ui::inspector_tabs::{render_cursor_tab, render_webcam_tab};
 use crate::ui::pill_slider::pill_slider;
@@ -25,7 +26,7 @@ pub fn render_floating_inspector(
         .child(
             div()
                 .size_full()
-                .p_3p5()
+                .p_3()
                 .rounded(px(16.0))
                 .bg(rgb(0xffffff))
                 .border_1()
@@ -33,7 +34,7 @@ pub fn render_floating_inspector(
                 .shadow_md()
                 .flex()
                 .flex_col()
-                .gap_2p5()
+                .gap_2()
                 .overflow_hidden()
                 .child(match tab {
                     RightPanelTab::Inspector => render_frame_inspector(view, cx).into_any_element(),
@@ -44,6 +45,7 @@ pub fn render_floating_inspector(
                     RightPanelTab::Permissions => {
                         render_permissions_tab(view, cx).into_any_element()
                     }
+                    RightPanelTab::Export => render_export_tab(view, cx).into_any_element(),
                 }),
         )
 }
@@ -56,13 +58,15 @@ fn render_frame_inspector(
     let shadow_pct = (frame.shadow_intensity * 100.0).round() as u32;
     let radius_pct = ((frame.corner_radius_px / 36.0).clamp(0.0, 1.0) * 100.0).round() as u32;
     let pad_pct = ((frame.padding_ratio / 0.30).clamp(0.0, 1.0) * 100.0).round() as u32;
+    let crop_top = (frame.crop.y * 100.0).round() as u32;
+    let crop_left = (frame.crop.x * 100.0).round() as u32;
     let remove_bg = view.state.remove_background;
 
     div()
         .flex_1()
         .flex()
         .flex_col()
-        .gap_2p5()
+        .gap_2()
         .child(render_background_section(view, cx))
         .child(section_action_row(
             "FRAME",
@@ -101,17 +105,6 @@ fn render_frame_inspector(
                 cx.notify();
             }),
         ))
-        .child(section_action_row(
-            "PADDING",
-            "Reset",
-            "reset-pad",
-            cx.listener(|this, _, _, cx| {
-                let mut f = this.state.project().frame.clone();
-                f.padding_ratio = 0.14;
-                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
-                cx.notify();
-            }),
-        ))
         .child(pill_slider(
             "slider-padding",
             "Padding",
@@ -130,6 +123,45 @@ fn render_frame_inspector(
             remove_bg,
             cx.listener(|this, _, _, cx| {
                 this.state.remove_background = !this.state.remove_background;
+                cx.notify();
+            }),
+        ))
+        .child(section_action_row(
+            "CROP",
+            "Reset",
+            "reset-crop",
+            cx.listener(|this, _, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                f.crop = CropRect::default();
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(pill_slider(
+            "slider-crop-v",
+            "Vertical",
+            format!("{crop_top}%"),
+            (frame.crop.y / 0.35).clamp(0.0, 1.0),
+            cx.listener(|this, v: &f32, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                let inset = (*v * 0.35).clamp(0.0, 0.35);
+                f.crop.y = inset;
+                f.crop.height = (1.0 - inset * 2.0).max(0.25);
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
+                cx.notify();
+            }),
+        ))
+        .child(pill_slider(
+            "slider-crop-h",
+            "Horizontal",
+            format!("{crop_left}%"),
+            (frame.crop.x / 0.35).clamp(0.0, 1.0),
+            cx.listener(|this, v: &f32, _, cx| {
+                let mut f = this.state.project().frame.clone();
+                let inset = (*v * 0.35).clamp(0.0, 0.35);
+                f.crop.x = inset;
+                f.crop.width = (1.0 - inset * 2.0).max(0.25);
+                let _ = this.state.apply_edit(EditCommand::UpdateFrameStyle(f));
                 cx.notify();
             }),
         ))

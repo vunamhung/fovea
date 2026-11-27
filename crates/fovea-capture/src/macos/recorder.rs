@@ -120,6 +120,7 @@ impl CaptureBackend for MacOsCaptureBackend {
             sc_cfg.setWidth(config.width as usize);
             sc_cfg.setHeight(config.height as usize);
             sc_cfg.setPixelFormat(PIXEL_FORMAT_BGRA);
+            sc_cfg.setQueueDepth(5);
             sc_cfg.setShowsCursor(!config.hide_os_cursor);
             sc_cfg.setMinimumFrameInterval(CMTime {
                 value: 1,

@@ -3,19 +3,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::*;
-use uuid::Uuid;
 
 use fovea_capture::{CaptureBackend, MacOsCaptureBackend, PermissionKind};
-use fovea_core::{
-    AnnotationItem, AnnotationKind, BackgroundStyle, EditCommand, FoveaBundle, ZoomRegion,
-};
+use fovea_core::{BackgroundStyle, EditCommand, FoveaBundle, TimelineMap};
+use fovea_render::DecodedFrame;
 
 use crate::state::StudioState;
 use crate::ui::inspector::render_floating_inspector;
 use crate::ui::presets::WALLPAPER_PRESETS;
 use crate::ui::rail::render_left_rail;
 use crate::ui::stage::render_stage;
-use crate::ui::studio_io::{decode_render_image, export_project_bundle, pick_custom_wallpaper};
+use crate::ui::studio_actions;
+use crate::ui::studio_io::{
+    decode_render_image, export_project_bundle, pick_custom_wallpaper, reveal_path_in_finder,
+    spawn_video_export,
+};
 use crate::ui::timeline::render_timeline;
 use crate::ui::topbar::render_topbar;
 
@@ -23,7 +25,9 @@ pub struct StudioView {
     pub state: StudioState,
     pub preview_frame: Option<Arc<RenderImage>>,
     pub custom_bg_image: Option<Arc<RenderImage>>,
+    pub custom_bg_decoded: Option<DecodedFrame>,
     last_decoded_ms: u64,
+    decode_in_flight: bool,
     backend: MacOsCaptureBackend,
 }
 
@@ -51,7 +55,9 @@ impl StudioView {
             state,
             preview_frame,
             custom_bg_image: None,
+            custom_bg_decoded: None,
             last_decoded_ms: 0,
+            decode_in_flight: false,
             backend,
         }
     }
@@ -62,8 +68,7 @@ impl StudioView {
             self.state.sources = self.backend.list_sources().unwrap_or_default();
             self.state.last_status = "All required permissions granted".into();
         } else {
-            self.state.last_status =
-                "Permissions rechecked — toggle Fovea ON in System Settings".into();
+            self.state.last_status = "Toggle Fovea ON in System Settings, then reopen".into();
         }
         cx.notify();
     }
@@ -84,6 +89,7 @@ impl StudioView {
             angle_deg: preset.angle_deg,
         };
         self.custom_bg_image = None;
+        self.custom_bg_decoded = None;
         self.state.selected_preset_idx = idx % WALLPAPER_PRESETS.len();
         self.state.last_status = format!("Preset: {}", preset.name);
         let _ = self.state.apply_edit(EditCommand::UpdateFrameStyle(frame));
@@ -99,20 +105,52 @@ impl StudioView {
         pick_custom_wallpaper(cx);
     }
 
+    pub fn start_video_export(&mut self, cx: &mut Context<Self>) {
+        spawn_video_export(self, cx);
+    }
+
     pub fn export_project_bundle(&mut self, cx: &mut Context<Self>) {
         export_project_bundle(&mut self.state);
         cx.notify();
+    }
+
+    pub fn reveal_last_export(&mut self, cx: &mut Context<Self>) {
+        if let Some(ref p) = self.state.last_export_path {
+            reveal_path_in_finder(p);
+            self.state.last_status = "Opened export in Finder".into();
+            cx.notify();
+        }
     }
 
     pub fn seek_to_ms(&mut self, ms: u64, cx: &mut Context<Self>) {
         let total = self.state.output_duration_ms();
         self.state.playhead_ms = ms.min(total);
         if let Some(ref bundle) = self.state.active_bundle
-            && self.state.playhead_ms.abs_diff(self.last_decoded_ms) >= 150
+            && !self.decode_in_flight
+            && self.state.playhead_ms.abs_diff(self.last_decoded_ms) >= 120
         {
+            let timeline = TimelineMap::from_project(self.state.project());
+            let src_ms = timeline
+                .map_output_to_source(self.state.playhead_ms)
+                .map(|m| m.source_ms)
+                .unwrap_or(self.state.playhead_ms);
+            let video_path = bundle.screen_video_path();
             self.last_decoded_ms = self.state.playhead_ms;
-            self.preview_frame =
-                decode_render_image(&bundle.screen_video_path(), self.state.playhead_ms);
+            self.decode_in_flight = true;
+            cx.spawn(async move |this, cx| {
+                let frame = cx
+                    .background_executor()
+                    .spawn(async move { decode_render_image(&video_path, src_ms) })
+                    .await;
+                let _ = this.update(cx, |view, cx| {
+                    view.decode_in_flight = false;
+                    if frame.is_some() {
+                        view.preview_frame = frame;
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
         }
         cx.notify();
     }
@@ -151,38 +189,12 @@ impl StudioView {
         .detach();
     }
 
-    pub fn add_demo_zoom(&mut self, cx: &mut Context<Self>) {
-        let start = self.state.playhead_ms;
-        let _ = self.state.apply_edit(EditCommand::AddZoomRegion(ZoomRegion {
-            id: Uuid::new_v4(),
-            start_ms: start,
-            end_ms: start + 2_600,
-            scale: 1.8,
-            focus_x: 0.52,
-            focus_y: 0.48,
-            auto_generated: false,
-        }));
-        self.state.last_status = "Added 1.8x zoom region".into();
-        self.seek_to_ms(start + 450, cx);
-    }
-
-    pub fn add_demo_privacy_blur(&mut self, cx: &mut Context<Self>) {
-        let start = self.state.playhead_ms;
-        let _ = self
-            .state
-            .apply_edit(EditCommand::AddAnnotation(AnnotationItem {
-                id: Uuid::new_v4(),
-                start_ms: start,
-                end_ms: start + 4_000,
-                x: 0.58,
-                y: 0.16,
-                width: 0.30,
-                height: 0.14,
-                payload: AnnotationKind::PrivacyBlur { blur_strength: 18.0 },
-            }));
-        self.state.last_status = "Added Privacy Blur box on Stage".into();
-        cx.notify();
-    }
+    pub fn split_clip_at_playhead(&mut self, cx: &mut Context<Self>) { studio_actions::split_clip_at_playhead(&mut self.state); cx.notify(); }
+    pub fn delete_selected_clip(&mut self, cx: &mut Context<Self>) { studio_actions::delete_selected_clip(&mut self.state); cx.notify(); }
+    pub fn set_selected_zoom_scale(&mut self, scale: f32, cx: &mut Context<Self>) { studio_actions::set_selected_zoom_scale(&mut self.state, scale); cx.notify(); }
+    pub fn delete_selected_zoom(&mut self, cx: &mut Context<Self>) { studio_actions::delete_selected_zoom(&mut self.state); cx.notify(); }
+    pub fn add_demo_zoom(&mut self, cx: &mut Context<Self>) { let ms = studio_actions::add_zoom_at_playhead(&mut self.state); self.seek_to_ms(ms, cx); }
+    pub fn add_demo_privacy_blur(&mut self, cx: &mut Context<Self>) { studio_actions::add_privacy_blur_at_playhead(&mut self.state); cx.notify(); }
 }
 
 impl Render for StudioView {

@@ -1,9 +1,9 @@
 use clap::Parser;
 use fovea_app::cli::{CliArgs, CliCommand};
-use fovea_app::demo::{build_demo_project, camera_at_ms};
+use fovea_app::demo::build_demo_project;
 use fovea_app::state::{RightPanelTab, SessionMode, StudioState};
 use fovea_capture::{CaptureSource, PermissionReport};
-use fovea_core::{AspectRatio, EditCommand};
+use fovea_core::{AspectRatio, EditCommand, camera_at_ms};
 
 #[test]
 fn cli_parses_default_editor_open_and_mcp_subcommands() {

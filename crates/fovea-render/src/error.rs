@@ -9,4 +9,10 @@ pub enum RenderError {
 
     #[error("native video decode error: {0}")]
     Decode(String),
+
+    #[error("video export error: {0}")]
+    Encode(String),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }

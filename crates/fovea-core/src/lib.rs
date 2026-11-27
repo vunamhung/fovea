@@ -1,5 +1,6 @@
 //! Core domain schema, timeline math, physics, and undoable command engine for Fovea.
 
+pub mod auto_zoom;
 pub mod bundle;
 pub mod command;
 pub mod engine;
@@ -11,6 +12,9 @@ pub mod style;
 pub mod telemetry;
 pub mod timeline;
 
+pub use auto_zoom::{
+    active_keystroke_at_ms, camera_at_ms, generate_auto_zooms, sample_cursor_at_ms,
+};
 pub use bundle::FoveaBundle;
 pub use command::EditCommand;
 pub use engine::CommandEngine;
