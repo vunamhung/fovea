@@ -1,5 +1,6 @@
 use clap::Parser;
 use fovea_app::cli::{CliArgs, CliCommand};
+use fovea_app::demo::{build_demo_project, camera_at_ms};
 use fovea_app::state::{RightPanelTab, SessionMode, StudioState};
 use fovea_capture::{CaptureSource, PermissionReport};
 use fovea_core::{AspectRatio, EditCommand};
@@ -63,4 +64,16 @@ fn studio_state_handles_recording_lifecycle_cycles_tabs_and_undo_redo() {
     state.mark_recording_stopped(420, 7_000);
     assert_eq!(state.mode, SessionMode::Editing);
     assert_eq!(state.project().source.duration_ms, 7_000);
+}
+
+#[test]
+fn demo_camera_ramps_smoothly_across_zoom_regions() {
+    let doc = build_demo_project(1920, 1080);
+    let (s0, _, _) = camera_at_ms(&doc.zoom_regions, 0);
+    let (s_mid, fx, fy) = camera_at_ms(&doc.zoom_regions, 2_000);
+    let (s_end, _, _) = camera_at_ms(&doc.zoom_regions, 7_000);
+    assert!((s0 - 1.0).abs() < 1e-4);
+    assert!((s_mid - 1.5).abs() < 1e-4);
+    assert!(fx < 0.45 && fy < 0.48);
+    assert!((s_end - 1.0).abs() < 1e-4);
 }

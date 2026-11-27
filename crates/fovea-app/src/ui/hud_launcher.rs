@@ -50,7 +50,9 @@ impl HudLauncherView {
             let _ = self
                 .backend
                 .open_permission_settings(PermissionKind::ScreenRecording);
-            self.state.last_status = "Grant Screen Recording in System Settings".into();
+            self.state.permissions = self.backend.check_permissions();
+            self.state.last_status =
+                "Toggle Fovea ON in Screen Recording Settings, then retry".into();
             cx.notify();
             return;
         }
@@ -163,6 +165,21 @@ impl HudLauncherView {
         .detach();
     }
 
+    pub fn request_screen_permission(&mut self, cx: &mut Context<Self>) {
+        let _ = self
+            .backend
+            .open_permission_settings(PermissionKind::ScreenRecording);
+        self.state.permissions = self.backend.check_permissions();
+        if self.state.permissions.all_required_granted() {
+            self.state.sources = self.backend.list_sources().unwrap_or_default();
+            self.state.last_status = "Ready".into();
+        } else {
+            self.state.last_status =
+                "Enable Fovea in System Settings -> Screen Recording".into();
+        }
+        cx.notify();
+    }
+
     pub fn stop_and_open_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(mut tap) = self.telemetry_tap.take() {
             let _ = tap.stop();
@@ -197,7 +214,7 @@ pub fn open_hud_launcher_window(cx: &mut App) {
         .primary_display()
         .map(|d| d.bounds())
         .unwrap_or_else(|| Bounds::new(point(px(0.0), px(0.0)), size(px(1440.0), px(900.0))));
-    let hud_w = px(580.0);
+    let hud_w = px(620.0);
     let hud_h = px(94.0);
     let x = display_bounds.origin.x + (display_bounds.size.width - hud_w) * 0.5;
     let y = display_bounds.origin.y + display_bounds.size.height - hud_h - px(44.0);
@@ -209,8 +226,9 @@ pub fn open_hud_launcher_window(cx: &mut App) {
             titlebar: None,
             focus: true,
             show: true,
-            kind: WindowKind::PopUp,
+            kind: WindowKind::Floating,
             is_movable: true,
+            app_owns_titlebar_drag: true,
             is_resizable: false,
             window_background: WindowBackgroundAppearance::Transparent,
             ..Default::default()

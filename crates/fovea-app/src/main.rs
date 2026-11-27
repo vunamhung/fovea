@@ -24,6 +24,7 @@ fn main() {
         .with_assets(gpui_kit::assets::Assets)
         .run(move |cx| {
             gpui_kit::init(cx);
+            cx.activate(true);
             Theme::change(ThemeMode::Light, None, cx);
 
             if start_editor {

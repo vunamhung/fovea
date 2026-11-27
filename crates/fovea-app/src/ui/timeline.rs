@@ -11,7 +11,7 @@ pub fn render_timeline(view: &StudioView, cx: &mut Context<StudioView>) -> impl 
     let playhead_ratio = (playhead_ms as f32 / total_ms as f32).clamp(0.0, 1.0);
     let is_playing = view.state.is_playing;
 
-    let zooms: Vec<(usize, u64, f32, f32, String, bool)> = project
+    let zooms: Vec<(usize, u64, u64, f32, f32, String, bool)> = project
         .zoom_regions
         .iter()
         .enumerate()
@@ -20,7 +20,7 @@ pub fn render_timeline(view: &StudioView, cx: &mut Context<StudioView>) -> impl 
             let width = ((z.end_ms.saturating_sub(z.start_ms)) as f32 / total_ms as f32)
                 .clamp(0.04, 1.0 - left);
             let active = playhead_ms >= z.start_ms && playhead_ms <= z.end_ms;
-            (i, z.start_ms, left, width, format!("{:.1}x", z.scale), active)
+            (i, z.start_ms, z.end_ms, left, width, format!("{:.1}x", z.scale), active)
         })
         .collect();
 
@@ -31,7 +31,7 @@ pub fn render_timeline(view: &StudioView, cx: &mut Context<StudioView>) -> impl 
         .border_color(rgb(0xebedf2))
         .flex()
         .flex_col()
-        .child(render_transport_bar(playhead_ms, total_ms, is_playing, cx))
+        .child(render_transport_bar(playhead_ms, total_ms, is_playing, view.state.volume_pct, cx))
         .child(render_ruler(total_ms, playhead_ratio, cx))
         .child(
             div()
@@ -80,11 +80,12 @@ fn render_clip_track() -> impl IntoElement {
 }
 
 fn render_zoom_track(
-    zooms: Vec<(usize, u64, f32, f32, String, bool)>,
+    zooms: Vec<(usize, u64, u64, f32, f32, String, bool)>,
     cx: &mut Context<StudioView>,
 ) -> impl IntoElement {
     let mut track = div().relative().h(px(38.0)).w_full();
-    for (i, start_ms, left, width, label, active) in zooms {
+    for (i, start_ms, end_ms, left, width, label, active) in zooms {
+        let seek_ms = (start_ms + 450).min(end_ms);
         track = track.child(
             div()
                 .id(("zoom-pill", i))
@@ -112,7 +113,7 @@ fn render_zoom_track(
                 .child(IconName::Search)
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.seek_to_ms(start_ms, cx);
+                    this.seek_to_ms(seek_ms, cx);
                 })),
         );
     }

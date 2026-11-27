@@ -15,7 +15,8 @@ use objc2_screen_capture_kit::{
 
 use crate::backend::{CaptureBackend, CaptureConfig, CaptureSource, CaptureStats};
 use crate::error::{CaptureError, CaptureResult};
-use crate::macos::sources::{check_macos_permissions, list_macos_sources, resolve_macos_filter};
+use crate::macos::permissions::{check_macos_permissions, request_macos_permission};
+use crate::macos::sources::{list_macos_sources, resolve_macos_filter};
 use crate::macos::writer::NativeMovieWriter;
 use crate::permissions::{PermissionKind, PermissionReport, open_system_settings_url};
 
@@ -91,6 +92,10 @@ impl CaptureBackend for MacOsCaptureBackend {
     }
 
     fn open_permission_settings(&self, kind: PermissionKind) -> CaptureResult<()> {
+        let already_granted = request_macos_permission(kind);
+        if already_granted {
+            return Ok(());
+        }
         open_system_settings_url(kind.macos_settings_url())
     }
 

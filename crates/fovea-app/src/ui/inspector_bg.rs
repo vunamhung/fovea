@@ -73,8 +73,7 @@ pub fn render_background_section(
                 .child(IconName::FolderOpen)
                 .child("Upload Custom")
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.state.last_status = "Custom wallpaper picker arrives in Milestone 2".into();
-                    cx.notify();
+                    this.pick_custom_wallpaper(cx);
                 })),
         )
         .child(render_swatch_grid(bg_tab, selected_preset, cx))

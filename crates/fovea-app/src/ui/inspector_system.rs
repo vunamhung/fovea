@@ -30,6 +30,12 @@ pub fn render_permissions_tab(view: &StudioView, cx: &mut Context<StudioView>) -
         .flex_col()
         .gap_2()
         .child(section_header("MACOS PERMISSIONS"))
+        .child(
+            div()
+                .text_xs()
+                .text_color(rgb(0x64748b))
+                .child("Click a permission to trigger macOS prompt and toggle Fovea ON in Settings."),
+        )
         .children(entries.into_iter().enumerate().map(|(i, e)| {
             let granted = e.state == PermissionState::Granted;
             let kind = e.kind;
@@ -54,10 +60,14 @@ pub fn render_permissions_tab(view: &StudioView, cx: &mut Context<StudioView>) -
                 )
                 .child(
                     div()
+                        .px_2()
+                        .py_0p5()
+                        .rounded(px(6.0))
+                        .bg(if granted { rgb(0xdcfce7) } else { rgb(0xeff6ff) })
                         .text_xs()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(if granted { rgb(0x059669) } else { rgb(0x2563eb) })
-                        .child(if granted { "Granted" } else { "Open Settings" }),
+                        .text_color(if granted { rgb(0x15803d) } else { rgb(0x2563eb) })
+                        .child(if granted { "Granted" } else { "Request" }),
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.open_permission_settings(kind, cx);

@@ -60,9 +60,12 @@ pub fn render_topbar(view: &StudioView, cx: &mut Context<StudioView>) -> impl In
         )
         .child(
             div()
+                .id("top-drag-title")
                 .flex_1()
                 .h_full()
-                .window_control_area(WindowControlArea::Drag)
+                .on_mouse_down(MouseButton::Left, |_, window, _| {
+                    window.start_window_move();
+                })
                 .flex()
                 .items_center()
                 .justify_center()
@@ -126,10 +129,7 @@ pub fn render_topbar(view: &StudioView, cx: &mut Context<StudioView>) -> impl In
                         .child(IconName::ExternalLink)
                         .child("Export")
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.state.last_status =
-                                "VideoToolbox MP4 & pure-Rust GIF export ready in Milestone 2"
-                                    .into();
-                            cx.notify();
+                            this.export_project_bundle(cx);
                         })),
                 ),
         )

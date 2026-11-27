@@ -53,21 +53,7 @@ pub fn render_hud_pill(view: &HudLauncherView, cx: &mut Context<HudLauncherView>
                 .items_center()
                 .justify_between()
                 .gap_2()
-                .child(
-                    div()
-                        .w(px(14.0))
-                        .h(px(28.0))
-                        .rounded(px(5.0))
-                        .window_control_area(WindowControlArea::Drag)
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .justify_center()
-                        .gap(px(3.0))
-                        .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgba(0xffffff44)))
-                        .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgba(0xffffff44)))
-                        .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgba(0xffffff44))),
-                )
+                .child(render_drag_grip())
                 .child(if recording {
                     render_recording_controls(&timer, cx).into_any_element()
                 } else {
@@ -77,10 +63,25 @@ pub fn render_hud_pill(view: &HudLauncherView, cx: &mut Context<HudLauncherView>
         )
 }
 
-fn render_recording_controls(
-    timer: &str,
-    cx: &mut Context<HudLauncherView>,
-) -> impl IntoElement {
+fn render_drag_grip() -> impl IntoElement {
+    div()
+        .id("hud-drag-grip")
+        .w(px(14.0))
+        .h(px(28.0))
+        .rounded(px(5.0))
+        .cursor_grab()
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.start_window_move())
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(3.0))
+        .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgba(0xffffff44)))
+        .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgba(0xffffff44)))
+        .child(div().w(px(3.0)).h(px(3.0)).rounded_full().bg(rgba(0xffffff44)))
+}
+
+fn render_recording_controls(timer: &str, cx: &mut Context<HudLauncherView>) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -98,9 +99,7 @@ fn render_recording_controls(
             "Stop & Edit",
             rgb(0xef4444),
             rgb(0xffffff),
-            cx.listener(|this, _, win, cx| {
-                this.stop_and_open_editor(win, cx);
-            }),
+            cx.listener(|this, _, win, cx| this.stop_and_open_editor(win, cx)),
         ))
 }
 
@@ -109,6 +108,7 @@ fn render_idle_controls(
     source_name: &str,
     cx: &mut Context<HudLauncherView>,
 ) -> impl IntoElement {
+    let needs_perm = !view.state.permissions.all_required_granted();
     div()
         .flex()
         .items_center()
@@ -123,6 +123,15 @@ fn render_idle_controls(
                 cx.notify();
             }),
         ))
+        .when(needs_perm, |d| {
+            d.child(hud_pill_btn(
+                "hud-grant-perm",
+                "Grant Access",
+                rgb(0xd97706),
+                rgb(0xffffff),
+                cx.listener(|this, _, _, cx| this.request_screen_permission(cx)),
+            ))
+        })
         .child(hud_icon_toggle(
             "hud-audio",
             IconName::Mic,
@@ -134,11 +143,7 @@ fn render_idle_controls(
         ))
         .child(hud_icon_toggle(
             "hud-cursor",
-            if view.state.hide_os_cursor {
-                IconName::EyeOff
-            } else {
-                IconName::Eye
-            },
+            if view.state.hide_os_cursor { IconName::EyeOff } else { IconName::Eye },
             view.state.hide_os_cursor,
             cx.listener(|this, _, _, cx| {
                 this.state.hide_os_cursor = !this.state.hide_os_cursor;
@@ -147,16 +152,10 @@ fn render_idle_controls(
         ))
         .child(hud_pill_btn(
             "hud-record",
-            if view.counting_down {
-                "Starting..."
-            } else {
-                "● Record"
-            },
+            if view.counting_down { "Starting..." } else { "● Record" },
             rgb(0xef4444),
             rgb(0xffffff),
-            cx.listener(|this, _, _, cx| {
-                this.start_countdown_and_record(cx);
-            }),
+            cx.listener(|this, _, _, cx| this.start_countdown_and_record(cx)),
         ))
 }
 

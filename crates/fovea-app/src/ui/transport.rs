@@ -7,6 +7,7 @@ pub fn render_transport_bar(
     playhead_ms: u64,
     total_ms: u64,
     is_playing: bool,
+    volume_pct: u8,
     cx: &mut Context<StudioView>,
 ) -> impl IntoElement {
     div()
@@ -93,18 +94,32 @@ pub fn render_transport_bar(
         )
         .child(
             div()
+                .id("tl-volume")
                 .h(px(26.0))
                 .px_3()
                 .rounded(px(7.0))
                 .bg(rgb(0xf1f5f9))
                 .border_1()
                 .border_color(rgb(0xe5e7eb))
+                .cursor_pointer()
                 .flex()
                 .items_center()
                 .text_xs()
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(rgb(0x475569))
-                .child("100%"),
+                .child(if volume_pct == 0 {
+                    "Muted".into()
+                } else {
+                    format!("{volume_pct}%")
+                })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.state.volume_pct = match this.state.volume_pct {
+                        100 => 50,
+                        50 => 0,
+                        _ => 100,
+                    };
+                    cx.notify();
+                })),
         )
 }
 

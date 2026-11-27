@@ -10,80 +10,9 @@ use objc2_screen_capture_kit::{SCContentFilter, SCShareableContent, SCWindow};
 
 use crate::backend::{CaptureSource, CaptureTarget};
 use crate::error::{CaptureError, CaptureResult};
-use crate::permissions::{PermissionEntry, PermissionKind, PermissionReport, PermissionState};
-
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    fn AXIsProcessTrusted() -> bool;
-}
-
-#[link(name = "IOKit", kind = "framework")]
-unsafe extern "C" {
-    fn IOHIDCheckAccess(request_type: u32) -> u32;
-}
-
-const K_IOHID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
-const K_IOHID_ACCESS_TYPE_GRANTED: u32 = 0;
-const K_IOHID_ACCESS_TYPE_DENIED: u32 = 1;
 
 pub struct SendFilter(pub Retained<SCContentFilter>);
 unsafe impl Send for SendFilter {}
-
-pub fn check_macos_permissions() -> PermissionReport {
-    let screen = if objc2_core_graphics::CGPreflightScreenCaptureAccess() {
-        PermissionState::Granted
-    } else {
-        PermissionState::Denied
-    };
-    let accessibility = if unsafe { AXIsProcessTrusted() } {
-        PermissionState::Granted
-    } else {
-        PermissionState::Denied
-    };
-    let input_monitoring = match unsafe { IOHIDCheckAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) } {
-        K_IOHID_ACCESS_TYPE_GRANTED => PermissionState::Granted,
-        K_IOHID_ACCESS_TYPE_DENIED => PermissionState::Denied,
-        _ => PermissionState::NotDetermined,
-    };
-    let mic = av_media_permission(unsafe { objc2_av_foundation::AVMediaTypeAudio });
-    let cam = av_media_permission(unsafe { objc2_av_foundation::AVMediaTypeVideo });
-
-    let items = [
-        (PermissionKind::ScreenRecording, screen),
-        (PermissionKind::Accessibility, accessibility),
-        (PermissionKind::InputMonitoring, input_monitoring),
-        (PermissionKind::Microphone, mic),
-        (PermissionKind::Camera, cam),
-    ];
-    PermissionReport::new(
-        items
-            .into_iter()
-            .map(|(kind, state)| PermissionEntry {
-                kind,
-                state,
-                required: kind.is_required(),
-                settings_url: kind.macos_settings_url().into(),
-            })
-            .collect(),
-    )
-}
-
-fn av_media_permission(
-    media_type: Option<&objc2_av_foundation::AVMediaType>,
-) -> PermissionState {
-    use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice};
-    let Some(mt) = media_type else {
-        return PermissionState::Unsupported;
-    };
-    match unsafe { AVCaptureDevice::authorizationStatusForMediaType(mt) } {
-        AVAuthorizationStatus::Authorized => PermissionState::Granted,
-        AVAuthorizationStatus::NotDetermined => PermissionState::NotDetermined,
-        AVAuthorizationStatus::Denied | AVAuthorizationStatus::Restricted => {
-            PermissionState::Denied
-        }
-        _ => PermissionState::Unsupported,
-    }
-}
 
 pub fn list_macos_sources() -> CaptureResult<Vec<CaptureSource>> {
     let (tx, rx) = mpsc::channel::<Result<Vec<CaptureSource>, String>>();

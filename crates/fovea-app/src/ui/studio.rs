@@ -3,27 +3,27 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::*;
-use image::{Frame, RgbaImage};
-use smallvec::smallvec;
 use uuid::Uuid;
 
 use fovea_capture::{CaptureBackend, MacOsCaptureBackend, PermissionKind};
 use fovea_core::{
     AnnotationItem, AnnotationKind, BackgroundStyle, EditCommand, FoveaBundle, ZoomRegion,
 };
-use fovea_render::extract_video_frame;
 
 use crate::state::StudioState;
 use crate::ui::inspector::render_floating_inspector;
 use crate::ui::presets::WALLPAPER_PRESETS;
 use crate::ui::rail::render_left_rail;
 use crate::ui::stage::render_stage;
+use crate::ui::studio_io::{decode_render_image, export_project_bundle, pick_custom_wallpaper};
 use crate::ui::timeline::render_timeline;
 use crate::ui::topbar::render_topbar;
 
 pub struct StudioView {
     pub state: StudioState,
     pub preview_frame: Option<Arc<RenderImage>>,
+    pub custom_bg_image: Option<Arc<RenderImage>>,
+    last_decoded_ms: u64,
     backend: MacOsCaptureBackend,
 }
 
@@ -50,17 +50,28 @@ impl StudioView {
         Self {
             state,
             preview_frame,
+            custom_bg_image: None,
+            last_decoded_ms: 0,
             backend,
         }
     }
 
     pub fn refresh_permissions(&mut self, cx: &mut Context<Self>) {
         self.state.permissions = self.backend.check_permissions();
+        if self.state.permissions.all_required_granted() {
+            self.state.sources = self.backend.list_sources().unwrap_or_default();
+            self.state.last_status = "All required permissions granted".into();
+        } else {
+            self.state.last_status =
+                "Permissions rechecked — toggle Fovea ON in System Settings".into();
+        }
         cx.notify();
     }
 
     pub fn open_permission_settings(&mut self, kind: PermissionKind, cx: &mut Context<Self>) {
         let _ = self.backend.open_permission_settings(kind);
+        self.state.permissions = self.backend.check_permissions();
+        self.state.last_status = format!("Requested {} — toggle Fovea ON in Settings", kind.label());
         cx.notify();
     }
 
@@ -72,7 +83,9 @@ impl StudioView {
             to_hex: preset.to_hex.into(),
             angle_deg: preset.angle_deg,
         };
+        self.custom_bg_image = None;
         self.state.selected_preset_idx = idx % WALLPAPER_PRESETS.len();
+        self.state.last_status = format!("Preset: {}", preset.name);
         let _ = self.state.apply_edit(EditCommand::UpdateFrameStyle(frame));
         cx.notify();
     }
@@ -82,11 +95,24 @@ impl StudioView {
         self.apply_preset_index(next, cx);
     }
 
+    pub fn pick_custom_wallpaper(&mut self, cx: &mut Context<Self>) {
+        pick_custom_wallpaper(cx);
+    }
+
+    pub fn export_project_bundle(&mut self, cx: &mut Context<Self>) {
+        export_project_bundle(&mut self.state);
+        cx.notify();
+    }
+
     pub fn seek_to_ms(&mut self, ms: u64, cx: &mut Context<Self>) {
         let total = self.state.output_duration_ms();
         self.state.playhead_ms = ms.min(total);
-        if let Some(ref bundle) = self.state.active_bundle {
-            self.preview_frame = decode_render_image(&bundle.screen_video_path(), ms);
+        if let Some(ref bundle) = self.state.active_bundle
+            && self.state.playhead_ms.abs_diff(self.last_decoded_ms) >= 150
+        {
+            self.last_decoded_ms = self.state.playhead_ms;
+            self.preview_frame =
+                decode_render_image(&bundle.screen_video_path(), self.state.playhead_ms);
         }
         cx.notify();
     }
@@ -99,14 +125,14 @@ impl StudioView {
         }
         cx.spawn(async move |this, cx| {
             loop {
-                cx.background_executor().timer(Duration::from_millis(120)).await;
+                cx.background_executor().timer(Duration::from_millis(33)).await;
                 let keep_going = this
                     .update(cx, |view, cx| {
                         if !view.state.is_playing {
                             return false;
                         }
                         let total = view.state.output_duration_ms();
-                        let next = view.state.playhead_ms + 120;
+                        let next = view.state.playhead_ms + 33;
                         if next >= total {
                             view.state.playhead_ms = 0;
                             view.state.is_playing = false;
@@ -130,13 +156,14 @@ impl StudioView {
         let _ = self.state.apply_edit(EditCommand::AddZoomRegion(ZoomRegion {
             id: Uuid::new_v4(),
             start_ms: start,
-            end_ms: start + 2_500,
+            end_ms: start + 2_600,
             scale: 1.8,
-            focus_x: 0.5,
-            focus_y: 0.5,
+            focus_x: 0.52,
+            focus_y: 0.48,
             auto_generated: false,
         }));
-        cx.notify();
+        self.state.last_status = "Added 1.8x zoom region".into();
+        self.seek_to_ms(start + 450, cx);
     }
 
     pub fn add_demo_privacy_blur(&mut self, cx: &mut Context<Self>) {
@@ -147,14 +174,13 @@ impl StudioView {
                 id: Uuid::new_v4(),
                 start_ms: start,
                 end_ms: start + 4_000,
-                x: 0.65,
-                y: 0.12,
-                width: 0.25,
-                height: 0.10,
-                payload: AnnotationKind::PrivacyBlur {
-                    blur_strength: 18.0,
-                },
+                x: 0.58,
+                y: 0.16,
+                width: 0.30,
+                height: 0.14,
+                payload: AnnotationKind::PrivacyBlur { blur_strength: 18.0 },
             }));
+        self.state.last_status = "Added Privacy Blur box on Stage".into();
         cx.notify();
     }
 }
@@ -182,16 +208,11 @@ impl Render for StudioView {
     }
 }
 
-fn decode_render_image(path: &std::path::Path, ms: u64) -> Option<Arc<RenderImage>> {
-    let decoded = extract_video_frame(path, ms, 1280).ok()?;
-    let buf = RgbaImage::from_raw(decoded.width, decoded.height, decoded.bgra)?;
-    Some(Arc::new(RenderImage::new(smallvec![Frame::new(buf)])))
-}
-
 pub fn open_studio_editor_window(open_path: Option<PathBuf>, cx: &mut App) {
     let bounds = Bounds::centered(None, size(px(1360.0), px(840.0)), cx);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        app_owns_titlebar_drag: true,
         titlebar: Some(TitlebarOptions {
             title: Some("Fovea".into()),
             appears_transparent: true,
